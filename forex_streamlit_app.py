@@ -22,8 +22,8 @@ if "autenticado" not in st.session_state:
 if not st.session_state.autenticado:
     senha = st.text_input("Digite a senha para acessar o sistema:", type="password")
     if senha == SENHA_CORRETA:
-        st.session_state.autenticado = True
-        st.experimental_rerun()
+    st.session_state.autenticado = True
+    st.rerun()
     else:
         st.stop()
 
