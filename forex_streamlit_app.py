@@ -21,11 +21,11 @@ if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
 if not st.session_state.autenticado:
     senha = st.text_input("Digite a senha para acessar o sistema:", type="password")
-    if senha == SENHA_CORRETA:
+if senha == SENHA_CORRETA:
     st.session_state.autenticado = True
     st.rerun()
-    else:
-        st.stop()
+else:
+    st.stop()
 
 # INTERFACE
 st.title("Sistema de Oportunidades Forex - Baixo/Médio Risco")
