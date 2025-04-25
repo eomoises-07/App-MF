@@ -1,3 +1,4 @@
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -13,7 +14,7 @@ import plotly.graph_objects as go
 # CONFIG
 st.set_page_config(page_title="Sistema de Sinais Forex", layout="wide")
 BR_TZ = pytz.timezone("America/Sao_Paulo")
-SENHA_CORRETA = "DeusÃ©fiel"
+SENHA_CORRETA = "Deuséfiel"
 
 # TELEGRAM CONFIG
 TOKEN = "7721305430:AAG1f_3Ne79H3vPkrgPIaJ6VtrM4o0z62ws"
@@ -39,11 +40,11 @@ if not st.session_state.autenticado:
         st.stop()
 
 # INTERFACE
-st.title("Sistema de Oportunidades Forex - Baixo/MÃ©dio Risco")
-st.markdown("Clique no botÃ£o abaixo para atualizar a anÃ¡lise manualmente.")
-st.caption(f"Ãšltima atualizaÃ§Ã£o: {datetime.now(BR_TZ).strftime('%d/%m/%Y %H:%M:%S')}")
+st.title("Sistema de Oportunidades Forex - Baixo/Médio Risco")
+st.markdown("Clique no botão abaixo para atualizar a análise manualmente.")
+st.caption(f"Última atualização: {datetime.now(BR_TZ).strftime('%d/%m/%Y %H:%M:%S')}")
 
-atualizar = st.button("ðŸ”„ Atualizar Agora")
+atualizar = st.button("🔄 Atualizar Agora")
 
 pares = ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X"]
 par_nome = {
@@ -83,20 +84,20 @@ def analisar(par):
 if atualizar:
     for par in pares:
         df, sinais = analisar(par)
-        st.subheader(f"{par_nome[par]} - Ãšltima vela: {df.index[-1].strftime('%d/%m/%Y %H:%M')}")
+        st.subheader(f"{par_nome[par]} - Última vela: {df.index[-1].strftime('%d/%m/%Y %H:%M')}")
         if sinais:
             for tipo, motivo in sinais:
                 preco = df["Close"].iloc[-1]
                 sl = preco * (0.995 if tipo == "COMPRA" else 1.005)
                 tp = preco * (1.01 if tipo == "COMPRA" else 0.99)
-                mensagem = f"ðŸš¨ SINAL DE {tipo} ðŸš¨\n\nPar: {par_nome[par]}\nPreÃ§o: {preco:.4f}\nSL: {sl:.4f}\nTP: {tp:.4f}\n\nMotivo: {motivo}\n\nHora: {datetime.now(BR_TZ).strftime('%d/%m/%Y %H:%M:%S')}"
+                mensagem = f"🚨 SINAL DE {tipo} 🚨\n\nPar: {par_nome[par]}\nPreço: {preco:.4f}\nSL: {sl:.4f}\nTP: {tp:.4f}\n\nMotivo: {motivo}\n\nHora: {datetime.now(BR_TZ).strftime('%d/%m/%Y %H:%M:%S')}"
                 enviar_telegram(mensagem)
                 st.success(mensagem)
         else:
             st.info("Sem sinais de entrada neste par no momento.")
-        with st.expander("Ver GrÃ¡fico"):
+        with st.expander("Ver Gráfico"):
             fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
-            fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="PreÃ§o"), row=1, col=1)
+            fig.add_trace(go.Candlestick(x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"], name="Preço"), row=1, col=1)
             fig.add_trace(go.Scatter(x=df.index, y=df["EMA20"], name="EMA20", line=dict(color="blue")), row=1, col=1)
             fig.add_trace(go.Scatter(x=df.index, y=df["EMA50"], name="EMA50", line=dict(color="orange")), row=1, col=1)
             fig.add_trace(go.Scatter(x=df.index, y=df["RSI"], name="RSI", line=dict(color="green")), row=2, col=1)
