@@ -48,13 +48,15 @@ def obter_dados(par):
 
 def analisar(par):
     df = obter_dados(par)
-    df['RSI'] = RSIIndicator(df['Close']).rsi()
-    df['EMA20'] = EMAIndicator(df['Close'], window=20).ema_indicator()
-    df['EMA50'] = EMAIndicator(df['Close'], window=50).ema_indicator()
-    macd = MACD(df['Close'])
+    close = df['Close'].squeeze()  # garantir que seja 1D
+
+    df['RSI'] = RSIIndicator(close).rsi()
+    df['EMA20'] = EMAIndicator(close, window=20).ema_indicator()
+    df['EMA50'] = EMAIndicator(close, window=50).ema_indicator()
+    macd = MACD(close)
     df['MACD'] = macd.macd()
     df['MACD_signal'] = macd.macd_signal()
-    bb = BollingerBands(df['Close'])
+    bb = BollingerBands(close)
     df['bb_high'] = bb.bollinger_hband()
     df['bb_low'] = bb.bollinger_lband()
 
