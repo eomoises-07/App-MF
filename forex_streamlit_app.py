@@ -43,7 +43,7 @@ par_nome = {
 @st.cache_data(ttl=3600)
 def obter_dados(par):
     df = yf.download(par, interval="1h", period="2d")
-    df.index = df.index.tz_localize("UTC").tz_convert(BR_TZ)
+    df.index = df.index.tz_convert("America/Sao_Paulo")
     return df
 
 def analisar(par):
