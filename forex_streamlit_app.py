@@ -1,8 +1,6 @@
-Sistema de Análise Forex - Completo 
+#Sistema de Análise Forex - Completo 
 
-import streamlit as st from datetime import datetime import pytz import yfinance as yf import pandas as pd import requests from ta.trend import EMAIndicator, MACD from ta.momentum import RSIIndicator from sklearn.tree import DecisionTreeClassifier import plotly.graph_objects as go from plotly.subplots import make_subplots
-
-Configurações iniciais 
+import streamlit as st from datetime import datetime import pytz import yfinance as yf import pandas as pd import requests from ta.trend import EMAIndicator, MACD from ta.momentum import RSIIndicator from sklearn.tree import DecisionTreeClassifier import plotly.graph_objects as go from plotly.subplots import make_subplots 
 
 st.set_page_config(page_title="Sistema de Análise Forex com IA", layout="wide") BR_TZ = pytz.timezone("America/Sao_Paulo")
 
