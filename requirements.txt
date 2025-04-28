@@ -1,6 +1,8 @@
 streamlit
 yfinance
-pandas
 pytz
+pandas
+requests
 ta
 plotly
+scikit-learn
