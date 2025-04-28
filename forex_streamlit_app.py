@@ -15,6 +15,7 @@ st.title("Sistema de Análise Forex - Atualizado")
 
 BR_TZ = pytz.timezone('America/Sao_Paulo')
 
+# Token e chat_id já incluidos
 def enviar_telegram(mensagem):
     token = '7721305430:AAG1f_3Ne79H3vPkrgPIaJ6VtrM4o0z62ws'
     chat_id = '5780415948'
@@ -34,10 +35,11 @@ def obter_dados(par, periodo="7d", intervalo="15m"):
 def analisar(par):
     df = obter_dados(par)
 
-    df['EMA9'] = EMAIndicator(df['Close'], window=9).ema_indicator()
-    df['EMA21'] = EMAIndicator(df['Close'], window=21).ema_indicator()
-    df['MACD'] = MACD(df['Close']).macd()
-    df['RSI'] = RSIIndicator(df['Close']).rsi()
+    close = df['Close'].squeeze()
+    df['EMA9'] = EMAIndicator(close, window=9).ema_indicator()
+    df['EMA21'] = EMAIndicator(close, window=21).ema_indicator()
+    df['MACD'] = MACD(close).macd()
+    df['RSI'] = RSIIndicator(close).rsi()
 
     df['EMA_cross'] = (df['EMA9'] > df['EMA21']).astype(int)
     df['MACD_cross'] = (df['MACD'] > 0).astype(int)
@@ -85,3 +87,4 @@ if st.button("Atualizar Análise"):
         st.write(sinal)
         enviar_telegram(sinal)
 
+st.caption('Sistema de Análise Forex - Atualizado para Telegram e IA Básica')
