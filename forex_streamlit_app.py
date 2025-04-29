@@ -22,11 +22,11 @@ if "autenticado" not in st.session_state:
 
 if not st.session_state.autenticado:
     senha = st.text_input("Digite a senha de acesso:", type="password")
-if senha == "Deuséfiel":
+if senha != "Deuséfiel":
+    st.stop()
+else:
     st.session_state.autenticado = True
     st.rerun()
-    else:
-        st.stop()
 
 # Token e Chat ID do Telegram
 TELEGRAM_TOKEN = "7721305430:AAG1f_3Ne79H3vPkrgPIaJ6VtrM4o0z62ws"
