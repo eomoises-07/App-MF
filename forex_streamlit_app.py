@@ -1,5 +1,4 @@
-
-# Sistema Forex Alpha Signals - Completo e Profissional
+# Sistema Forex Alpha Signals - Corrigido
 
 import streamlit as st
 import yfinance as yf
@@ -22,11 +21,11 @@ if "autenticado" not in st.session_state:
 
 if not st.session_state.autenticado:
     senha = st.text_input("Digite a senha de acesso:", type="password")
-if senha != "Deuséfiel":
-    st.stop()
-else:
-    st.session_state.autenticado = True
-    st.rerun()
+    if senha != "Deuséfiel":
+        st.stop()
+    else:
+        st.session_state.autenticado = True
+        st.rerun()
 
 # Token e Chat ID do Telegram
 TELEGRAM_TOKEN = "7721305430:AAG1f_3Ne79H3vPkrgPIaJ6VtrM4o0z62ws"
@@ -53,7 +52,7 @@ def obter_dados(par):
     df.index = df.index.tz_localize("UTC").tz_convert(BR_TZ)
     return df
 
-def analisar_sinais(df):
+def analisar_sinais(df, par):
     close = df["Close"].squeeze()
     df["EMA9"] = EMAIndicator(close, window=9).ema_indicator()
     df["EMA21"] = EMAIndicator(close, window=21).ema_indicator()
@@ -77,15 +76,7 @@ def analisar_sinais(df):
     alvo = entrada * (1.003 if tipo == "Compra" else 0.997)
 
     datahora = ult.name.strftime("%d/%m/%Y %H:%M")
-    msg = f"""🔔 Novo Sinal Gerado
-
-• Par de Moedas: {par}
-• Sinal: {tipo}
-• Preço de Entrada: {entrada:.5f}
-• Stop Loss: {stop:.5f}
-• Take Profit: {alvo:.5f}
-• Horário: {datahora}
-• Análise: Baseado em EMA + RSI + MACD + IA"""
+    msg = f"""\ud83d\udd14 Novo Sinal Gerado\n\n• Par de Moedas: {par}\n• Sinal: {tipo}\n• Preço de Entrada: {entrada:.5f}\n• Stop Loss: {stop:.5f}\n• Take Profit: {alvo:.5f}\n• Horário: {datahora}\n• Análise: Baseado em EMA + RSI + MACD + IA"""
 
     enviar_telegram(msg)
 
@@ -103,12 +94,12 @@ def analisar_sinais(df):
     return msg
 
 # Interface principal
-pares = ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "NZDUSD=X", "USDCHF=X"]
+pares = ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X", "GBPUSD=X", "NZDUSD=X", "USDCHF=X"]
 par = st.selectbox("Selecione o par de moedas:", pares)
 
 if st.button("Atualizar Análise"):
     dados = obter_dados(par)
-    mensagem = analisar_sinais(dados)
+    mensagem = analisar_sinais(dados, par)
     st.success("Sinal gerado e enviado para o Telegram!")
     st.code(mensagem)
 
