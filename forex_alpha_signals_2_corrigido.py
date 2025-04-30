@@ -1,4 +1,3 @@
-
 # Forex Alpha Signals 2.0 - Sistema Integrado (corrigido)
 
 import streamlit as st
@@ -8,9 +7,11 @@ import numpy as np
 import pytz
 from ta.trend import EMAIndicator, MACD
 from ta.momentum import RSIIndicator
+from ta.volatility import BollingerBands # <<< ADICIONADO AQUI
 from sklearn.tree import DecisionTreeClassifier
 import requests
 from datetime import datetime
+import config # <<< ADICIONADO AQUI
 
 # CONFIGURAÇÕES INICIAIS
 st.set_page_config(page_title="Forex Alpha Signals 2.0", layout="wide")
@@ -22,19 +23,21 @@ if "autenticado" not in st.session_state:
 
 if not st.session_state.autenticado:
     senha = st.text_input("Digite a senha:", type="password")
-    if senha != "Deuséfiel":
+    # Usa a senha do arquivo config.py
+    if senha != config.SENHA_APP:
         st.stop()
     else:
         st.session_state.autenticado = True
         st.rerun()
 
-# Telegram
-TELEGRAM_TOKEN = "7721305430:AAG1f_3Ne79H3vPkrgPIaJ6VtrM4o0z62ws"
-TELEGRAM_CHAT_ID = "5780415948"
+# Telegram - Credenciais movidas para config.py
+# TELEGRAM_TOKEN = "..."
+# TELEGRAM_CHAT_ID = "..."
 
 def enviar_telegram(mensagem):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
+    # Usa credenciais do config.py
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
+    data = {"chat_id": config.TELEGRAM_CHAT_ID, "text": mensagem}
     try:
         response = requests.post(url, data=data, timeout=10) # Adicionado timeout
         response.raise_for_status() # Levanta exceção para erros HTTP (4xx ou 5xx)
@@ -45,7 +48,8 @@ def enviar_telegram(mensagem):
         print(f"ALERTA: Ocorreu um erro inesperado ao enviar notificação para o Telegram: {e}")
 
 # Seleção de mercado e ativos
-mercado = st.selectbox("Escolha o Mercado", ["Câmbio (Forex)", "Criptomoedas", "Ações", "Commodities"])
+st.sidebar.header("Configurações de Análise") # <<< Adicionado Sidebar
+mercado = st.sidebar.selectbox("Escolha o Mercado", ["Câmbio (Forex)", "Criptomoedas", "Ações", "Commodities"])
 
 ativos = {
     "Câmbio (Forex)": ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X"],
@@ -54,8 +58,13 @@ ativos = {
     "Commodities": ["GC=F", "CL=F", "SI=F"]
 }
 
-ativo = st.selectbox("Selecione o Ativo", ativos[mercado])
-timeframe = st.selectbox("Intervalo de Tempo", ["15m", "30m", "1h", "4h", "1d", "1wk", "1mo"])
+ativo = st.sidebar.selectbox("Selecione o Ativo", ativos[mercado])
+timeframe = st.sidebar.selectbox("Intervalo de Tempo", ["15m", "30m", "1h", "4h", "1d", "1wk", "1mo"])
+
+st.sidebar.header("Gerenciamento de Risco")
+# Multiplicadores como desvio percentual (ex: 0.003 para 0.3%)
+stop_dev = st.sidebar.number_input("Desvio Stop Loss (ex: 0.003 para 0.3%)", min_value=0.0001, max_value=0.1, value=0.003, step=0.0001, format="%.4f")
+take_dev = st.sidebar.number_input("Desvio Take Profit (ex: 0.003 para 0.3%)", min_value=0.0001, max_value=0.1, value=0.003, step=0.0001, format="%.4f")
 
 # Histórico
 if "historico" not in st.session_state:
@@ -113,14 +122,21 @@ def obter_dados(ticker, tf):
 
 def analisar(df, ativo):
     close = df["Close"].squeeze()
+    # Calcular Indicadores
     df["EMA9"] = EMAIndicator(close, window=9).ema_indicator()
     df["EMA21"] = EMAIndicator(close, window=21).ema_indicator()
     df["MACD"] = MACD(close).macd()
     df["RSI"] = RSIIndicator(close).rsi()
-    df = df.dropna()
+    # Calcular Bandas de Bollinger
+    bb = BollingerBands(close, window=20, window_dev=2)
+    df["BB_High"] = bb.bollinger_hband()
+    df["BB_Mid"] = bb.bollinger_mavg()
+    df["BB_Low"] = bb.bollinger_lband()
+
+    df = df.dropna() # Remover NaNs após calcular todos os indicadores
 
     if df.empty or df.shape[0] < 10:
-        st.warning("Dados insuficientes para análise. Tente outro ativo ou intervalo de tempo.")
+        st.warning("Dados insuficientes para análise após cálculo de indicadores. Tente outro ativo ou intervalo.")
         return ""
 
     df["Alvo"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
@@ -133,11 +149,13 @@ def analisar(df, ativo):
         st.warning("Dados insuficientes para treinar o modelo após ajustes. Tente outro ativo ou intervalo.")
         return ""
 
-    X_train = df_train[["EMA9", "EMA21", "MACD", "RSI"]]
+    # Definir features (incluindo Bandas de Bollinger)
+    features = ["EMA9", "EMA21", "MACD", "RSI", "BB_High", "BB_Mid", "BB_Low"]
+    X_train = df_train[features]
     y_train = df_train["Alvo"]
 
     # Preparar dados da última linha para previsão
-    X_predict = df[["EMA9", "EMA21", "MACD", "RSI"]].iloc[-1:]
+    X_predict = df[features].iloc[-1:]
 
     modelo = DecisionTreeClassifier(random_state=42) # Adicionar random_state para reprodutibilidade
     modelo.fit(X_train, y_train)
@@ -146,8 +164,9 @@ def analisar(df, ativo):
     ult = df.iloc[-1]
     tipo = "📈 Compra" if previsao_ult == 1 else "📉 Venda"
     entrada = ult["Close"]
-    stop = entrada * (0.997 if tipo == "📈 Compra" else 1.003)
-    alvo = entrada * (1.003 if tipo == "📈 Compra" else 0.997)
+    # Usa os desvios definidos na sidebar
+    stop = entrada * (1 - stop_dev) if tipo == "📈 Compra" else entrada * (1 + stop_dev)
+    alvo = entrada * (1 + take_dev) if tipo == "📈 Compra" else entrada * (1 - take_dev)
     horario = ult.name.strftime("%d/%m/%Y %H:%M")
 
     mensagem = f"""🔔 Sinal gerado ({mercado})
@@ -158,7 +177,7 @@ Entrada: {entrada:.5f}
 Stop: {stop:.5f}
 Take: {alvo:.5f}
 Horário: {horario}
-Base: EMA + MACD + RSI + IA"""
+Base: EMA + MACD + RSI + BB + IA""" # <<< Atualizado Base
 
     enviar_telegram(mensagem)
 
@@ -174,22 +193,41 @@ Base: EMA + MACD + RSI + IA"""
 
     return mensagem
 
-# Botão para analisar
-if st.button("🔍 Analisar Agora"):
-    df = obter_dados(ativo, timeframe)
-    # Adiciona verificação para garantir que df não é None antes de analisar
-    if df is not None:
-        mensagem = analisar(df, ativo)
-        if mensagem:
-            st.success("Sinal gerado com sucesso!")
-            st.code(mensagem)
-    # Se df for None, a função obter_dados já terá exibido um erro via st.error
-# Histórico
-st.subheader("📑 Histórico de Sinais")
-if st.session_state.historico:
-    df_hist = pd.DataFrame(st.session_state.historico)
-    st.dataframe(df_hist)
-    csv = df_hist.to_csv(index=False).encode("utf-8")
-    st.download_button("⬇️ Baixar Histórico", csv, file_name="historico_sinais.csv", mime="text/csv")
-else:
-    st.info("Nenhum sinal gerado ainda.")
+# Layout Principal
+col1, col2 = st.columns([3, 1]) # <<< Colunas para layout
+
+with col1: # <<< Conteúdo principal na coluna maior
+    st.markdown("""Bem-vindo ao **Forex Alpha Signals 2.0**!
+    Configure os parâmetros na barra lateral esquerda, selecione o ativo e intervalo desejados, e clique em 'Analisar Agora' para gerar um sinal.
+    Os sinais são baseados em indicadores técnicos (EMA, MACD, RSI, Bandas de Bollinger) e um modelo simples de IA.
+    **Atenção:** Este é um sistema experimental. Use os sinais por sua conta e risco.""")
+
+    if st.button("🔍 Analisar Agora"):
+        with st.spinner("Analisando dados..."): # <<< Adiciona spinner
+            df = obter_dados(ativo, timeframe)
+            # Adiciona verificação para garantir que df não é None antes de analisar
+            if df is not None:
+                mensagem = analisar(df, ativo)
+                if mensagem:
+                    st.success("Sinal gerado com sucesso!")
+                    st.code(mensagem)
+                else:
+                    # Caso analisar retorne vazio (ex: dados insuficientes)
+                    st.info("Não foi possível gerar um sinal com os dados atuais.")
+            # Se df for None, a função obter_dados já terá exibido um erro via st.error
+
+    # Histórico dentro de um expander
+    with st.expander("📑 Ver/Ocultar Histórico de Sinais"):
+        if st.session_state.historico:
+            df_hist = pd.DataFrame(st.session_state.historico)
+            st.dataframe(df_hist)
+            csv = df_hist.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇️ Baixar Histórico", csv, file_name="historico_sinais.csv", mime="text/csv")
+        else:
+            st.info("Nenhum sinal gerado ainda.")
+
+with col2: # <<< Pode adicionar mais informações ou controles aqui
+    st.write(" ") # Espaço
+
+
+
