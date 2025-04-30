@@ -89,7 +89,7 @@ def analisar(df, ativo):
     alvo = entrada * (1.003 if tipo == "📈 Compra" else 0.997)
     horario = ult.name.strftime("%d/%m/%Y %H:%M")
 
-    mensagem = f"🔔 Sinal gerado ({mercado})
+    mensagem = f"""🔔 Sinal gerado ({mercado})
 
 Ativo: {ativo}
 Sinal: {tipo}
@@ -97,7 +97,7 @@ Entrada: {entrada:.5f}
 Stop: {stop:.5f}
 Take: {alvo:.5f}
 Horário: {horario}
-Base: EMA + MACD + RSI + IA"
+Base: EMA + MACD + RSI + IA"""
     enviar_telegram(mensagem)
 
     st.session_state.historico.append({
