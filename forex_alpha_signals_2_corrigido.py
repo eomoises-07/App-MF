@@ -36,9 +36,13 @@ def enviar_telegram(mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": mensagem}
     try:
-        requests.post(url, data=data)
-    except:
-        pass
+        response = requests.post(url, data=data, timeout=10) # Adicionado timeout
+        response.raise_for_status() # Levanta exceção para erros HTTP (4xx ou 5xx)
+        print("Notificação Telegram enviada com sucesso.") # Adicionado feedback
+    except requests.exceptions.RequestException as e:
+        print(f"ALERTA: Falha ao enviar notificação para o Telegram: {e}")
+    except Exception as e:
+        print(f"ALERTA: Ocorreu um erro inesperado ao enviar notificação para o Telegram: {e}")
 
 # Seleção de mercado e ativos
 mercado = st.selectbox("Escolha o Mercado", ["Câmbio (Forex)", "Criptomoedas", "Ações", "Commodities"])
@@ -51,7 +55,7 @@ ativos = {
 }
 
 ativo = st.selectbox("Selecione o Ativo", ativos[mercado])
-timeframe = st.selectbox("Intervalo de Tempo", ["1h", "4h", "1d"])
+timeframe = st.selectbox("Intervalo de Tempo", ["15m", "30m", "1h", "4h", "1d", "1wk", "1mo"])
 
 # Histórico
 if "historico" not in st.session_state:
@@ -59,12 +63,50 @@ if "historico" not in st.session_state:
 
 # Funções de análise
 def obter_dados(ticker, tf):
-    dias = "5d" if tf in ["1h", "2h", "4h"] else "1mo"
+    # Define o período com base no intervalo, respeitando limites do yfinance
+    # Intervalos < 1d: max 730d (mas 60d é mais seguro para intraday)
+    # Intervalos >= 1d: sem limite prático recente
+    if tf in ["15m", "30m", "1h", "4h"]:
+        periodo = "60d" # 60 dias para intervalos intradiários
+    elif tf == "1d":
+        periodo = "1y" # 1 ano para diário
+    elif tf == "1wk":
+        periodo = "5y" # 5 anos para semanal
+    elif tf == "1mo":
+        periodo = "10y" # 10 anos para mensal
+    else:
+        periodo = "1mo" # Fallback, embora não deva acontecer com os TFs definidos
+
     intervalo = tf
-    df = yf.download(ticker, period=dias, interval=intervalo)
-    df = df.dropna()
-    df.index = df.index.tz_convert("America/Sao_Paulo")
-    return df
+    print(f"Baixando dados para {ticker} | Intervalo: {intervalo} | Período: {periodo}")
+    try:
+        df = yf.download(ticker, period=periodo, interval=intervalo, progress=False) # Desativar barra de progresso
+        if df.empty:
+            st.error(f"Erro: Nenhum dado retornado por yfinance para {ticker} com intervalo {tf} e período {periodo}.")
+            return None
+
+        df = df.dropna()
+        if df.empty:
+            st.error(f"Erro: Dados retornados, mas vazios após dropna para {ticker} com intervalo {tf}.")
+            return None
+
+        # Tenta converter fuso horário
+        try:
+            if isinstance(df.index, pd.DatetimeIndex):
+                if df.index.tz is None:
+                    df.index = df.index.tz_localize("UTC")
+                df.index = df.index.tz_convert("America/Sao_Paulo")
+            else:
+                st.warning(f"Aviso: Índice não é do tipo DatetimeIndex para {ticker}. Conversão de fuso horário pulada.")
+        except Exception as e:
+            st.warning(f"Aviso: Falha ao converter fuso horário para {ticker}: {e}. Usando dados como estão.")
+
+        print(f"Dados para {ticker} baixados e processados com sucesso.")
+        return df
+
+    except Exception as e:
+        st.error(f"Erro GERAL ao baixar/processar dados de yfinance para {ticker} com intervalo {tf}: {e}")
+        return None
 
 def analisar(df, ativo):
     close = df["Close"].squeeze()
@@ -79,15 +121,27 @@ def analisar(df, ativo):
         return ""
 
     df["Alvo"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
-    X = df[["EMA9", "EMA21", "MACD", "RSI"]]
-    y = df["Alvo"]
 
-    modelo = DecisionTreeClassifier()
-    modelo.fit(X, y)
-    df["Previsao"] = modelo.predict(X)
+    # Remover a última linha para treino, pois seu alvo é NaN e não deve ser usado
+    df_train = df.iloc[:-1].copy()
+    df_train = df_train.dropna() # Garante que não há NaNs no treino
+
+    if df_train.empty or df_train.shape[0] < 10:
+        st.warning("Dados insuficientes para treinar o modelo após ajustes. Tente outro ativo ou intervalo.")
+        return ""
+
+    X_train = df_train[["EMA9", "EMA21", "MACD", "RSI"]]
+    y_train = df_train["Alvo"]
+
+    # Preparar dados da última linha para previsão
+    X_predict = df[["EMA9", "EMA21", "MACD", "RSI"]].iloc[-1:]
+
+    modelo = DecisionTreeClassifier(random_state=42) # Adicionar random_state para reprodutibilidade
+    modelo.fit(X_train, y_train)
+    previsao_ult = modelo.predict(X_predict)[0]
 
     ult = df.iloc[-1]
-    tipo = "📈 Compra" if ult["Previsao"] == 1 else "📉 Venda"
+    tipo = "📈 Compra" if previsao_ult == 1 else "📉 Venda"
     entrada = ult["Close"]
     stop = entrada * (0.997 if tipo == "📈 Compra" else 1.003)
     alvo = entrada * (1.003 if tipo == "📈 Compra" else 0.997)
