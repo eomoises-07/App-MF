@@ -64,10 +64,13 @@ if "historico" not in st.session_state:
 # Funções de análise
 def obter_dados(ticker, tf):
     # Define o período com base no intervalo, respeitando limites do yfinance
-    # Intervalos < 1d: max 730d (mas 60d é mais seguro para intraday)
+    # Intervalos < 1h: max 7d (recomendado pela documentação yfinance para 1m)
+    # Intervalos 1h, 4h: max 730d (usaremos 60d como antes)
     # Intervalos >= 1d: sem limite prático recente
-    if tf in ["15m", "30m", "1h", "4h"]:
-        periodo = "60d" # 60 dias para intervalos intradiários
+    if tf in ["15m", "30m"]:
+        periodo = "7d"  # Usar 7 dias para intervalos < 1h
+    elif tf in ["1h", "4h"]:
+        periodo = "60d" # Manter 60 dias para 1h e 4h
     elif tf == "1d":
         periodo = "1y" # 1 ano para diário
     elif tf == "1wk":
@@ -174,11 +177,13 @@ Base: EMA + MACD + RSI + IA"""
 # Botão para analisar
 if st.button("🔍 Analisar Agora"):
     df = obter_dados(ativo, timeframe)
-    mensagem = analisar(df, ativo)
-    if mensagem:
-        st.success("Sinal gerado com sucesso!")
-        st.code(mensagem)
-
+    # Adiciona verificação para garantir que df não é None antes de analisar
+    if df is not None:
+        mensagem = analisar(df, ativo)
+        if mensagem:
+            st.success("Sinal gerado com sucesso!")
+            st.code(mensagem)
+    # Se df for None, a função obter_dados já terá exibido um erro via st.error
 # Histórico
 st.subheader("📑 Histórico de Sinais")
 if st.session_state.historico:
