@@ -1,5 +1,5 @@
 
-# Forex Alpha Signals 2.0 - Sistema Integrado
+# Forex Alpha Signals 2.0 - Sistema Integrado (corrigido)
 
 import streamlit as st
 import yfinance as yf
@@ -74,6 +74,10 @@ def analisar(df, ativo):
     df["RSI"] = RSIIndicator(close).rsi()
     df = df.dropna()
 
+    if df.empty or df.shape[0] < 10:
+        st.warning("Dados insuficientes para análise. Tente outro ativo ou intervalo de tempo.")
+        return ""
+
     df["Alvo"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
     X = df[["EMA9", "EMA21", "MACD", "RSI"]]
     y = df["Alvo"]
@@ -98,6 +102,7 @@ Stop: {stop:.5f}
 Take: {alvo:.5f}
 Horário: {horario}
 Base: EMA + MACD + RSI + IA"""
+
     enviar_telegram(mensagem)
 
     st.session_state.historico.append({
@@ -116,8 +121,9 @@ Base: EMA + MACD + RSI + IA"""
 if st.button("🔍 Analisar Agora"):
     df = obter_dados(ativo, timeframe)
     mensagem = analisar(df, ativo)
-    st.success("Sinal gerado com sucesso!")
-    st.code(mensagem)
+    if mensagem:
+        st.success("Sinal gerado com sucesso!")
+        st.code(mensagem)
 
 # Histórico
 st.subheader("📑 Histórico de Sinais")
