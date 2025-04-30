@@ -63,7 +63,7 @@ def obter_dados(ticker, tf):
     intervalo = tf
     df = yf.download(ticker, period=dias, interval=intervalo)
     df = df.dropna()
-    df.index = df.index.tz_localize("UTC").tz_convert("America/Sao_Paulo")
+    df.index = df.index.tz_convert("America/Sao_Paulo")
     return df
 
 def analisar(df, ativo):
