@@ -1,4 +1,4 @@
-# Forex Alpha Signals 2.0 - Corrigido com tratamento de timezone
+# Forex Alpha Signals 2.0 - Versão corrigida para evitar erros de timezone e dados vazios
 
 import streamlit as st
 import yfinance as yf
@@ -8,7 +8,6 @@ from ta.trend import EMAIndicator, MACD
 from ta.momentum import RSIIndicator
 from sklearn.tree import DecisionTreeClassifier
 import requests
-from datetime import datetime
 
 st.set_page_config(page_title="Forex Alpha Signals 2.0", layout="wide")
 st.title("📊 Forex Alpha Signals 2.0")
@@ -50,17 +49,24 @@ timeframe = st.selectbox("Intervalo de Tempo", ["1h", "2h", "4h", "1d"])
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
+# Função corrigida para obter dados
 def obter_dados(ticker, tf):
-    dias = "5d" if tf in ["1h", "2h", "4h"] else "1mo"
-    intervalo = tf
-    df = yf.download(ticker, period=dias, interval=intervalo)
-    df = df.dropna()
-    if df.index.tz is None:
-        df.index = df.index.tz_localize("UTC").tz_convert("America/Sao_Paulo")
-    else:
-        df.index = df.index.tz_convert("America/Sao_Paulo")
-    return df
+    dias = "5d" if tf in ["1h", "2h", "4h"] else "30d"
+    try:
+        df = yf.download(ticker, period=dias, interval=tf)
+        df = df.dropna()
+        if df.empty:
+            return df
+        if df.index.tz is None:
+            df.index = df.index.tz_localize("UTC").tz_convert("America/Sao_Paulo")
+        else:
+            df.index = df.index.tz_convert("America/Sao_Paulo")
+        return df
+    except Exception as e:
+        st.error(f"Erro ao obter dados: {e}")
+        return pd.DataFrame()
 
+# Função de análise
 def analisar(df, ativo):
     close = df["Close"].squeeze()
     df["EMA9"] = EMAIndicator(close, window=9).ema_indicator()
@@ -112,13 +118,18 @@ Base: EMA + MACD + RSI + IA"""
 
     return mensagem
 
+# Execução manual
 if st.button("🔍 Analisar Agora"):
     df = obter_dados(ativo, timeframe)
-    mensagem = analisar(df, ativo)
-    if mensagem:
-        st.success("Sinal gerado com sucesso!")
-        st.code(mensagem)
+    if df.empty:
+        st.warning("Não foi possível carregar dados para este ativo e intervalo. Tente outro.")
+    else:
+        mensagem = analisar(df, ativo)
+        if mensagem:
+            st.success("Sinal gerado com sucesso!")
+            st.code(mensagem)
 
+# Histórico
 st.subheader("📑 Histórico de Sinais")
 if st.session_state.historico:
     df_hist = pd.DataFrame(st.session_state.historico)
