@@ -1,20 +1,25 @@
-# Forex Alpha Signals 2.0 - Versão corrigida para evitar erros de timezone e dados vazios
+
+# Forex Alpha Signals 2.0 - Sistema Integrado (corrigido)
 
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import pytz
 from ta.trend import EMAIndicator, MACD
 from ta.momentum import RSIIndicator
 from sklearn.tree import DecisionTreeClassifier
 import requests
+from datetime import datetime
 
+# CONFIGURAÇÕES INICIAIS
 st.set_page_config(page_title="Forex Alpha Signals 2.0", layout="wide")
 st.title("📊 Forex Alpha Signals 2.0")
 
 # Autenticação
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
+
 if not st.session_state.autenticado:
     senha = st.text_input("Digite a senha:", type="password")
     if senha != "Deuséfiel":
@@ -35,38 +40,32 @@ def enviar_telegram(mensagem):
     except:
         pass
 
-# Seleção
+# Seleção de mercado e ativos
 mercado = st.selectbox("Escolha o Mercado", ["Câmbio (Forex)", "Criptomoedas", "Ações", "Commodities"])
+
 ativos = {
     "Câmbio (Forex)": ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "AUDUSD=X", "USDCAD=X"],
     "Criptomoedas": ["BTC-USD", "ETH-USD", "SOL-USD", "BNB-USD"],
     "Ações": ["AAPL", "MSFT", "AMZN", "PETR4.SA", "VALE3.SA"],
     "Commodities": ["GC=F", "CL=F", "SI=F"]
 }
-ativo = st.selectbox("Selecione o Ativo", ativos[mercado])
-timeframe = st.selectbox("Intervalo de Tempo", ["1h", "2h", "4h", "1d"])
 
+ativo = st.selectbox("Selecione o Ativo", ativos[mercado])
+timeframe = st.selectbox("Intervalo de Tempo", ["1h", "4h", "1d"])
+
+# Histórico
 if "historico" not in st.session_state:
     st.session_state.historico = []
 
-# Função corrigida para obter dados
+# Funções de análise
 def obter_dados(ticker, tf):
-    dias = "5d" if tf in ["1h", "2h", "4h"] else "30d"
-    try:
-        df = yf.download(ticker, period=dias, interval=tf)
-        df = df.dropna()
-        if df.empty:
-            return df
-        if df.index.tz is None:
-            df.index = df.index.tz_localize("UTC").tz_convert("America/Sao_Paulo")
-        else:
-            df.index = df.index.tz_convert("America/Sao_Paulo")
-        return df
-    except Exception as e:
-        st.error(f"Erro ao obter dados: {e}")
-        return pd.DataFrame()
+    dias = "5d" if tf in ["1h", "2h", "4h"] else "1mo"
+    intervalo = tf
+    df = yf.download(ticker, period=dias, interval=intervalo)
+    df = df.dropna()
+    df.index = df.index.tz_convert("America/Sao_Paulo")
+    return df
 
-# Função de análise
 def analisar(df, ativo):
     close = df["Close"].squeeze()
     df["EMA9"] = EMAIndicator(close, window=9).ema_indicator()
@@ -76,7 +75,7 @@ def analisar(df, ativo):
     df = df.dropna()
 
     if df.empty or df.shape[0] < 10:
-        st.warning(f"Dados insuficientes para análise. Foram encontrados apenas {df.shape[0]} registros.")
+        st.warning("Dados insuficientes para análise. Tente outro ativo ou intervalo de tempo.")
         return ""
 
     df["Alvo"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
@@ -118,16 +117,13 @@ Base: EMA + MACD + RSI + IA"""
 
     return mensagem
 
-# Execução manual
+# Botão para analisar
 if st.button("🔍 Analisar Agora"):
     df = obter_dados(ativo, timeframe)
-    if df.empty:
-        st.warning("Não foi possível carregar dados para este ativo e intervalo. Tente outro.")
-    else:
-        mensagem = analisar(df, ativo)
-        if mensagem:
-            st.success("Sinal gerado com sucesso!")
-            st.code(mensagem)
+    mensagem = analisar(df, ativo)
+    if mensagem:
+        st.success("Sinal gerado com sucesso!")
+        st.code(mensagem)
 
 # Histórico
 st.subheader("📑 Histórico de Sinais")
