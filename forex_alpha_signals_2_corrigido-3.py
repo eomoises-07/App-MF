@@ -13,6 +13,9 @@ import requests
 from datetime import datetime
 import config # <<< ADICIONADO AQUI
 
+import threading # <<< ADICIONADO AQUI
+import time # <<< Adicionado para possível uso futuro (pausas)
+
 # CONFIGURAÇÕES INICIAIS
 st.set_page_config(page_title="Forex Alpha Signals 2.0", layout="wide")
 st.title("📊 Forex Alpha Signals 2.0")
@@ -58,7 +61,8 @@ ativos = {
     "Commodities": ["GC=F", "CL=F", "SI=F"]
 }
 
-ativo = st.sidebar.selectbox("Selecione o Ativo", ativos[mercado])
+# A seleção de ativo individual foi removida, pois a análise agora é para todos os ativos do mercado selecionado.
+# ativo = st.sidebar.selectbox("Selecione o Ativo", ativos[mercado])
 timeframe = st.sidebar.selectbox("Intervalo de Tempo", ["15m", "30m", "1h", "4h", "1d", "1wk", "1mo"])
 
 st.sidebar.header("Gerenciamento de Risco")
@@ -71,21 +75,24 @@ if "historico" not in st.session_state:
     st.session_state.historico = []
 
 # Funções de análise
+@st.cache_data(ttl=600) # Cache de 10 minutos
 def obter_dados(ticker, tf):
     # Define o período com base no intervalo, respeitando limites do yfinance
-    # Intervalos < 1h: max 7d (recomendado pela documentação yfinance para 1m)
-    # Intervalos 1h, 4h: max 730d (usaremos 60d como antes)
-    # Intervalos >= 1d: sem limite prático recente
+    # Intervalos < 1h: Tentaremos 60d (limite pode ser 7d ou 60d dependendo da API/ativo)
+    # Intervalos 1h, 4h: Tentaremos 730d (aprox. 2 anos)
+    # Intervalo 1d: Tentaremos 5y (5 anos)
+    # Intervalo 1wk: Tentaremos 10y (10 anos)
+    # Intervalo 1mo: Usaremos 'max'
     if tf in ["15m", "30m"]:
-        periodo = "7d"  # Usar 7 dias para intervalos < 1h
+        periodo = "60d" # Tentar 60 dias para intervalos < 1h
     elif tf in ["1h", "4h"]:
-        periodo = "60d" # Manter 60 dias para 1h e 4h
+        periodo = "730d" # Tentar 2 anos para 1h e 4h
     elif tf == "1d":
-        periodo = "1y" # 1 ano para diário
+        periodo = "5y" # 5 anos para diário
     elif tf == "1wk":
-        periodo = "5y" # 5 anos para semanal
+        periodo = "10y" # 10 anos para semanal
     elif tf == "1mo":
-        periodo = "10y" # 10 anos para mensal
+        periodo = "max" # Máximo disponível para mensal
     else:
         periodo = "1mo" # Fallback, embora não deva acontecer com os TFs definidos
 
@@ -120,7 +127,12 @@ def obter_dados(ticker, tf):
         st.error(f"Erro GERAL ao baixar/processar dados de yfinance para {ticker} com intervalo {tf}: {e}")
         return None
 
-def analisar(df, ativo):
+def analisar(df, ativo, mercado, stop_dev, take_dev): # <<< Parâmetros adicionados
+    # Verifica se df é None logo no início
+    if df is None:
+        print(f"[Analisar] Erro: DataFrame vazio recebido para {ativo}.")
+        return None
+
     close = df["Close"].squeeze()
     # Calcular Indicadores
     df["EMA9"] = EMAIndicator(close, window=9).ema_indicator()
@@ -136,8 +148,9 @@ def analisar(df, ativo):
     df = df.dropna() # Remover NaNs após calcular todos os indicadores
 
     if df.empty or df.shape[0] < 10:
-        st.warning("Dados insuficientes para análise após cálculo de indicadores. Tente outro ativo ou intervalo.")
-        return ""
+        # st.warning(...) será removido pois esta função rodará em background
+        print(f"[Analisar] Dados insuficientes para {ativo} após cálculo de indicadores.")
+        return None # <<< Retorna None em vez de string vazia
 
     df["Alvo"] = (df["Close"].shift(-1) > df["Close"]).astype(int)
 
@@ -146,8 +159,8 @@ def analisar(df, ativo):
     df_train = df_train.dropna() # Garante que não há NaNs no treino
 
     if df_train.empty or df_train.shape[0] < 10:
-        st.warning("Dados insuficientes para treinar o modelo após ajustes. Tente outro ativo ou intervalo.")
-        return ""
+        print(f"[Analisar] Dados insuficientes para treinar modelo para {ativo} após ajustes.")
+        return None # <<< Retorna None
 
     # Definir features (incluindo Bandas de Bollinger)
     features = ["EMA9", "EMA21", "MACD", "RSI", "BB_High", "BB_Mid", "BB_Low"]
@@ -164,10 +177,12 @@ def analisar(df, ativo):
     ult = df.iloc[-1]
     tipo = "📈 Compra" if previsao_ult == 1 else "📉 Venda"
     entrada = ult["Close"]
-    # Usa os desvios definidos na sidebar
+    # Usa os desvios passados como parâmetro
     stop = entrada * (1 - stop_dev) if tipo == "📈 Compra" else entrada * (1 + stop_dev)
     alvo = entrada * (1 + take_dev) if tipo == "📈 Compra" else entrada * (1 - take_dev)
-    horario = ult.name.strftime("%d/%m/%Y %H:%M")
+    # Usar UTC para horário do sinal para consistência
+    horario_utc = ult.name.tz_convert('UTC')
+    horario_str = horario_utc.strftime("%d/%m/%Y %H:%M UTC")
 
     mensagem = f"""🔔 Sinal gerado ({mercado})
 
@@ -176,45 +191,48 @@ Sinal: {tipo}
 Entrada: {entrada:.5f}
 Stop: {stop:.5f}
 Take: {alvo:.5f}
-Horário: {horario}
+Horário: {horario_str}
 Base: EMA + MACD + RSI + BB + IA""" # <<< Atualizado Base
 
-    enviar_telegram(mensagem)
+    # Não envia Telegram nem atualiza histórico aqui
+    # enviar_telegram(mensagem)
+    # st.session_state.historico.append({...})
 
-    st.session_state.historico.append({
-        "Data/Hora": horario,
+    # Retorna os dados do sinal como dicionário
+    sinal_info = {
+        "Data/Hora": horario_str,
         "Mercado": mercado,
         "Ativo": ativo,
         "Sinal": tipo,
         "Entrada": round(entrada, 5),
         "Stop": round(stop, 5),
-        "Alvo": round(alvo, 5)
-    })
-
-    return mensagem
+        "Alvo": round(alvo, 5),
+        "Mensagem": mensagem # Inclui a mensagem formatada
+    }
+    print(f"[Analisar] Sinal gerado para {ativo}: {tipo}")
+    return sinal_info # <<< Retorna dicionário com info do sinal
 
 # Layout Principal
 col1, col2 = st.columns([3, 1]) # <<< Colunas para layout
-
 with col1: # <<< Conteúdo principal na coluna maior
     st.markdown("""Bem-vindo ao **Forex Alpha Signals 2.0**!
-    Configure os parâmetros na barra lateral esquerda, selecione o ativo e intervalo desejados, e clique em 'Analisar Agora' para gerar um sinal.
-    Os sinais são baseados em indicadores técnicos (EMA, MACD, RSI, Bandas de Bollinger) e um modelo simples de IA.
+    Configure os parâmetros na barra lateral esquerda (Mercado, Intervalo, Risco).
+    Clique em **Analisar TODOS os Ativos Agora** para iniciar uma análise em segundo plano para todos os ativos do mercado selecionado.
+    Sinais gerados serão enviados ao Telegram e o histórico abaixo será atualizado.
+    Base da Análise: EMA, MACD, RSI, Bandas de Bollinger + IA (Árvore de Decisão).
     **Atenção:** Este é um sistema experimental. Use os sinais por sua conta e risco.""")
-
-    if st.button("🔍 Analisar Agora"):
-        with st.spinner("Analisando dados..."): # <<< Adiciona spinner
-            df = obter_dados(ativo, timeframe)
-            # Adiciona verificação para garantir que df não é None antes de analisar
-            if df is not None:
-                mensagem = analisar(df, ativo)
-                if mensagem:
-                    st.success("Sinal gerado com sucesso!")
-                    st.code(mensagem)
-                else:
-                    # Caso analisar retorne vazio (ex: dados insuficientes)
-                    st.info("Não foi possível gerar um sinal com os dados atuais.")
-            # Se df for None, a função obter_dados já terá exibido um erro via st.error
+    # Modificado para iniciar análise de TODOS os ativos em background
+    if st.button("🔍 Analisar TODOS os Ativos Agora"):
+        st.info("Iniciando análise completa de todos os ativos em segundo plano... O histórico será atualizado ao concluir.")
+        # Criar e iniciar a thread
+        thread = threading.Thread(
+            target=analisar_todos_ativos_background,
+            args=(ativos, timeframe, stop_dev, take_dev), # Passa o dict de ativos e os params da sidebar
+            daemon=True # Permite que o app feche mesmo se a thread estiver rodando
+        )
+        thread.start()
+        # Não espera a thread terminar, a interface continua responsiva
+        # O spinner foi removido pois a análise agora é em background
 
     # Histórico dentro de um expander
     with st.expander("📑 Ver/Ocultar Histórico de Sinais"):
@@ -230,4 +248,55 @@ with col2: # <<< Pode adicionar mais informações ou controles aqui
     st.write(" ") # Espaço
 
 
+
+
+# --- Funções para Análise em Background ---
+
+def analisar_ativo(ativo, mercado, timeframe, stop_dev, take_dev):
+    """Obtém dados e analisa um único ativo/timeframe."""
+    print(f"[BG] Iniciando análise para {ativo} ({mercado}) - {timeframe}")
+    df = obter_dados(ativo, timeframe)
+    if df is not None:
+        sinal_info = analisar(df, ativo, mercado, stop_dev, take_dev)
+        return sinal_info
+    else:
+        print(f"[BG] Falha ao obter dados para {ativo} - {timeframe}. Pulando análise.")
+        return None
+
+def analisar_todos_ativos_background(ativos_dict, timeframe, stop_dev, take_dev):
+    """Função para ser executada em background, analisando todos os ativos."""
+    print("[BG] Iniciando análise de todos os ativos em background...")
+    novos_sinais = []
+    for mercado, lista_ativos in ativos_dict.items():
+        print(f"[BG] Analisando mercado: {mercado}")
+        for ativo in lista_ativos:
+            sinal = analisar_ativo(ativo, mercado, timeframe, stop_dev, take_dev)
+            if sinal:
+                novos_sinais.append(sinal)
+                # Enviar notificação imediatamente após gerar o sinal
+                try:
+                    enviar_telegram(sinal["Mensagem"])
+                    print(f"[BG] Notificação enviada para {ativo}.")
+                except Exception as e:
+                    print(f"[BG] Erro ao tentar enviar notificação para {ativo}: {e}")
+            # Pequena pausa para não sobrecarregar a API (opcional, ajustar conforme necessário)
+            # time.sleep(1)
+
+    print(f"[BG] Análise em background concluída. {len(novos_sinais)} sinais gerados.")
+
+    # Atualizar o histórico na session_state (requer cuidado com threads)
+    # A forma mais segura é usar st.session_state diretamente se o Streamlit >= 1.18
+    # ou usar um mecanismo de fila/callback se for versão anterior ou para maior robustez.
+    # Por simplicidade agora, vamos tentar adicionar diretamente, mas cientes do risco.
+    if novos_sinais:
+        if "historico" not in st.session_state:
+            st.session_state.historico = []
+        # Adiciona os novos sinais no início da lista
+        st.session_state.historico = novos_sinais + st.session_state.historico
+        print("[BG] Histórico atualizado na session_state.")
+
+    # Poderia retornar os sinais ou apenas finalizar
+    return novos_sinais
+
+# -----------------------------------------
 
