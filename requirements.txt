@@ -1,8 +1,8 @@
-streamlit
-yfinance
-pytz
-pandas
-requests
-ta
-plotly
-scikit-learn
+streamlit==1.32.2
+yfinance==0.2.37
+pandas==2.2.2
+numpy==1.26.4
+pytz==2024.1
+ta==0.11.0
+scikit-learn==1.4.2
+requests==2.31.0
