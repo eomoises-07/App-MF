@@ -249,3 +249,24 @@ with col1:
 with col2:
     st.write(" ")
 
+def loop_automatico(ativos_dict, intervalo, stop_dev, take_dev, tempo_espera_minutos=10):
+    """Loop contínuo que analisa os ativos automaticamente a cada X minutos"""
+    while True:
+        print(f"[AGENDADOR] Iniciando análise automática de todos os ativos...")
+        try:
+            analisar_todos_ativos_background(ativos_dict, intervalo, stop_dev, take_dev)
+        except Exception as e:
+            print(f"[AGENDADOR] Erro durante análise automática: {e}")
+        print(f"[AGENDADOR] Aguardando {tempo_espera_minutos} minutos para próxima análise...")
+        time.sleep(tempo_espera_minutos * 60)
+
+# Iniciar o loop em segundo plano ao carregar o app
+if "agendador_iniciado" not in st.session_state:
+    st.session_state.agendador_iniciado = True
+    t_loop = threading.Thread(
+        target=loop_automatico,
+        args=(ativos, timeframe, stop_dev, take_dev),
+        daemon=True
+    )
+    t_loop.start()
+    print("[AGENDADOR] Loop automático iniciado.")
