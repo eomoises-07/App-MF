@@ -1,1 +1,0 @@
-web: streamlit run forex_streamlit_app.py --server.port=$PORT
